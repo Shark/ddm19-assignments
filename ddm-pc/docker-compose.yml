@@ -1,0 +1,5 @@
+version: '3'
+services:
+  app:
+    image: shark/ddm19-assignments-ddm-pc
+    build: .
