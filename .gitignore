@@ -21,3 +21,25 @@
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
+
+#IDE
+.project
+.classpath
+.settings
+/.settings
+.metadata
+/.metadata
+.recommenders
+*.releaseBackup
+release.properties
+.idea
+/.idea
+*.iml
+*.class
+bin/
+target
+datasets/
+output/
+copyOctopus2Thor.sh
+copyAkkaTutorial2Thor.sh
+ddm-lmp/src/main/java/de/hpi/ddm/solution/*
