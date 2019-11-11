@@ -10,7 +10,9 @@ import akka.actor.AbstractLoggingActor;
 import akka.actor.Props;
 import de.hpi.ddm.configuration.ConfigurationSingleton;
 import de.hpi.ddm.configuration.DatasetDescriptorSingleton;
+import de.hpi.ddm.structures.Line;
 import lombok.Data;
+import scala.Array;
 
 public class Reader extends AbstractLoggingActor {
 
@@ -85,7 +87,23 @@ public class Reader extends AbstractLoggingActor {
 		this.buffer.clear();
 		
 		String[] line;
-		while ((this.buffer.size() < this.bufferSize) && ((line = this.reader.readNext()) != null))
+		while ((this.buffer.size() < this.bufferSize) && ((line = this.reader.readNext()) != null)) {
+			convertLine(line);
 			this.buffer.add(line);
+		}
+	}
+
+	private Line convertLine(String buffer[]){
+		Line line = new Line();
+		line.setId(Integer.valueOf(buffer[0]));
+		line.setName(buffer[1]);
+		line.setPasswordChars(buffer[2].toCharArray());
+		line.setPasswordLength(Integer.valueOf(buffer[3]));
+		line.setHashedPassword(buffer[4]);
+
+		String[] hints = new String[buffer.length - 5];
+		Array.copy(buffer,5,hints,0,hints.length);
+		line.setHints(hints);
+		return line;
 	}
 }
