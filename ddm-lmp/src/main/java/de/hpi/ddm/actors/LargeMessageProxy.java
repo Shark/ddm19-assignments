@@ -48,7 +48,7 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 	/////////////////
 	// Actor State //
 	/////////////////
-	
+
 	/////////////////////
 	// Actor Lifecycle //
 	/////////////////////
@@ -76,8 +76,10 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 		for(int i = 0; i< serializedObject.length; i++)
 			converted[i] = Byte.valueOf(serializedObject[i]);
 
-		Source<Byte, NotUsed> source = Source.from(Arrays.asList(converted));
-		SourceRef<Byte> sourceRef = source.runWith(StreamRefs.sourceRef(), this.context().system());
+
+		Byte[][] chunked = chunk(converted, 10024);
+		Source<Byte[], NotUsed> source = Source.from(Arrays.asList(chunked));
+		SourceRef<Byte[]> sourceRef = source.runWith(StreamRefs.sourceRef(), this.context().system());
 
 		receiverProxy.tell(new SourceByteMessage(sourceRef, this.sender(), message.getReceiver()), this.self());
 	}
@@ -96,12 +98,34 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 		}
 	}
 
-	private void handle(SourceByteMessage message){
-		Sink sink = Sink.fold(new ArrayList<Byte>(), (aggr, next) -> add(aggr, (Byte)next));
-		Source source = message.getSourceRef().getSource();
+	private Byte[][] chunk(Byte[] array, int chunkSize){
+		// first we have to check if the array can be split in multiple
+		// arrays of equal 'chunk' size
+		int rest = array.length % chunkSize;  // if rest>0 then our last array will have less elements than the others
+		// then we check in how many arrays we can split our input array
+		int chunks = array.length / chunkSize + (rest > 0 ? 1 : 0); // we may have to add an additional array for the 'rest'
+		// now we know how many arrays we need and create our result array
+		Byte[][] arrays = new Byte[chunks][];
+		// we create our resulting arrays by copying the corresponding
+		// part from the input array. If we have a rest (rest>0), then
+		// the last array will have less elements than the others. This
+		// needs to be handled separately, so we iterate 1 times less.
+		for(int i = 0; i < (rest > 0 ? chunks - 1 : chunks); i++){
+			// this copies 'chunk' times 'chunkSize' elements into a new array
+			arrays[i] = Arrays.copyOfRange(array, i * chunkSize, i * chunkSize + chunkSize);
+		}
+		if(rest > 0){ // only when we have a rest
+			// we copy the remaining elements into the last chunk
+			arrays[chunks - 1] = Arrays.copyOfRange(array, (chunks - 1) * chunkSize, (chunks - 1) * chunkSize + rest);
+		}
+		return arrays; // that's it
+	}
 
+	private void handle(SourceByteMessage message){
+		Sink sink = Sink.fold(new ArrayList<Byte>(), (aggr, next) -> add(aggr, (Byte[])next));
+		Source source = message.getSourceRef().getSource();
 		final CompletionStage<ArrayList<Byte>> o = (CompletionStage<ArrayList<Byte>>) source.runWith(sink, this.context().system());
-		o.whenComplete((p,a ) -> handleTransmissionComplete(p,a, message.getReceiver(), message.getSender()));
+		o.whenCompleteAsync((p,a ) -> handleTransmissionComplete(p,a, message.getReceiver(), message.getSender()));
 	}
 
 	private void handleTransmissionComplete(ArrayList<Byte> elements, Object exception, ActorRef receiver, ActorRef sender) {
@@ -123,8 +147,9 @@ public class LargeMessageProxy extends AbstractLoggingActor {
 		}
 	}
 
-	private ArrayList<Byte> add (ArrayList<Byte> list, Byte next){
-		list.add(next);
+	private ArrayList<Byte> add (ArrayList<Byte> list, Byte[] next){
+		for(int i=0; i< next.length;i++)
+			list.add(next[i]);
 		return list;
 	}
 }

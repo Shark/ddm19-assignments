@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SourceByteMessage{
-    private SourceRef<Byte> sourceRef;
+    private SourceRef<Byte[]> sourceRef;
     private ActorRef sender;
     private ActorRef receiver;
 }
