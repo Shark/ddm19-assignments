@@ -1,9 +1,7 @@
 package de.hpi.ddm.actors;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
@@ -30,6 +28,9 @@ public class Master extends AbstractLoggingActor {
 		this.reader = reader;
 		this.collector = collector;
 		this.workers = new ArrayList<>();
+		this.lineQueue = new LinkedList<>();
+		this.idleWorkers = new LinkedList<>();
+		this.isAllBatchesReceived = false;
 	}
 
 	////////////////////
@@ -59,6 +60,9 @@ public class Master extends AbstractLoggingActor {
 	private final ActorRef reader;
 	private final ActorRef collector;
 	private final List<ActorRef> workers;
+	private final LinkedList<String[]> lineQueue;
+	private final LinkedList<ActorRef> idleWorkers;
+	private Boolean isAllBatchesReceived;
 
 	private long startTime;
 	
@@ -82,6 +86,7 @@ public class Master extends AbstractLoggingActor {
 				.match(BatchMessage.class, this::handle)
 				.match(Terminated.class, this::handle)
 				.match(RegistrationMessage.class, this::handle)
+				.match(Worker.ReadyMessage.class, this::handle)
 				.matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
 				.build();
 	}
@@ -103,15 +108,34 @@ public class Master extends AbstractLoggingActor {
 		
 		if (message.getLines().isEmpty()) {
 			this.collector.tell(new Collector.PrintMessage(), this.self());
-			this.terminate();
+			this.isAllBatchesReceived = true;
 			return;
 		}
-		
-		for (String[] line : message.getLines())
-			System.out.println(Arrays.toString(line));
+
+		this.lineQueue.addAll(message.getLines());
+
+		if(!this.idleWorkers.isEmpty()) {
+			ActorRef worker = this.idleWorkers.removeFirst();
+			String[] line = this.lineQueue.removeFirst();
+			worker.tell(new Worker.LineMessage(line), this.self());
+		}
 		
 		this.collector.tell(new Collector.CollectMessage("Processed batch of size " + message.getLines().size()), this.self());
 		this.reader.tell(new Reader.ReadMessage(), this.self());
+	}
+
+	protected void handle(Worker.ReadyMessage message) {
+		if(this.lineQueue.isEmpty()) {
+			if(this.isAllBatchesReceived) {
+				this.terminate();
+			} else {
+				this.idleWorkers.add(message.getSender());
+			}
+			return;
+		}
+
+		String[] line = this.lineQueue.removeFirst();
+		message.getSender().tell(new Worker.LineMessage(line), this.self());
 	}
 	
 	protected void terminate() {
