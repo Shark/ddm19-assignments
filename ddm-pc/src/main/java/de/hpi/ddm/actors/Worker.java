@@ -12,7 +12,6 @@ import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
 import akka.actor.PoisonPill;
 import akka.actor.Props;
-import akka.actor.dsl.Creators;
 import akka.cluster.Cluster;
 import akka.cluster.ClusterEvent.CurrentClusterState;
 import akka.cluster.ClusterEvent.MemberRemoved;
@@ -88,7 +87,7 @@ public class Worker extends AbstractLoggingActor {
 		return receiveBuilder()
 				.match(CurrentClusterState.class, this::handle)
 				.match(MemberUp.class, this::handle)
-				.match(Master.PermutationRequestMessage.class, this::handle)
+				.match(Master.HintRequestMessage.class, this::handle)
 				.match(MemberRemoved.class, this::handle)
 				.match(LineMessage.class, this::handle)
 				.matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
@@ -118,7 +117,7 @@ public class Worker extends AbstractLoggingActor {
 		}
 	}
 
-	private void handle(Master.PermutationRequestMessage message){
+	private void handle(Master.HintRequestMessage message){
 		System.out.println(message);
 		char[] keys = message.getPermutationKeys();
 

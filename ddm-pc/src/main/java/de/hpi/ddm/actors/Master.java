@@ -55,12 +55,37 @@ public class Master extends AbstractLoggingActor {
 	}
 
 	@Data @NoArgsConstructor @AllArgsConstructor
-	public static class PermutationRequestMessage implements Serializable {
+	public static class HintRequestMessage implements Serializable {
 		private static final long serialVersionUID = 8343234942748609598L;
-		private char[] permutationKeys;
-		private String[] hashedHints;
-		private ActorRef boss;
+		private char[] permutationKeys; // [b,c,d,e,f,g,h,i,j]
+		private char hintKey;           // a
+		private String[] hashedHints;   // ["hintHash1", "hintHash2", ...]
+		private ActorRef boss;          // ActorRef(master)
 	}
+
+	@Data @NoArgsConstructor @AllArgsConstructor
+	public static class HintAnswerMessage implements Serializable {
+		private static final long serialVersionUID = 8343232442748609598L;
+		private char hintKey;         // a
+		private String[] solvedHints; // ["hintHash2",  ...]
+	}
+
+	@Data @NoArgsConstructor @AllArgsConstructor
+	public static class PasswordRequestMessage implements Serializable {
+		private static final long serialVersionUID = 8343231242748609598L;
+		private char[] permutationKeys; // [ 'a', 'e']
+		private int passwordLength;     // 10
+		private String hashedPassword;  // "hash1"
+		private ActorRef boss;          // ActorRef(master)
+	}
+
+	@Data @NoArgsConstructor @AllArgsConstructor
+	public static class PasswordAnswerMessage implements Serializable {
+		private static final long serialVersionUID = 8343232442748129598L;
+		private String solvedPassword;  // "aaeeaaee"
+		private String hashedPassword;  // "hint1
+	}
+
 
 
 	/////////////////
@@ -149,7 +174,7 @@ public class Master extends AbstractLoggingActor {
 
 
 		for(ActorRef worker : this.workers){
-			worker.tell(new PermutationRequestMessage(allHints.get(i), allHintHashesArray, this.self()),this.self());
+			//worker.tell(new HintRequestMessage(allHints.get(i), allHintHashesArray, this.self()),this.self());
 			i++;
 		}
 		for (Line line : message.getLines())
