@@ -5,12 +5,14 @@ import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 
 import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
 import akka.actor.PoisonPill;
 import akka.actor.Props;
+import akka.actor.dsl.Creators;
 import akka.cluster.Cluster;
 import akka.cluster.ClusterEvent.CurrentClusterState;
 import akka.cluster.ClusterEvent.MemberRemoved;
@@ -86,6 +88,7 @@ public class Worker extends AbstractLoggingActor {
 		return receiveBuilder()
 				.match(CurrentClusterState.class, this::handle)
 				.match(MemberUp.class, this::handle)
+				.match(Master.PermutationRequestMessage.class, this::handle)
 				.match(MemberRemoved.class, this::handle)
 				.match(LineMessage.class, this::handle)
 				.matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
@@ -113,6 +116,29 @@ public class Worker extends AbstractLoggingActor {
 
 			this.sendReadyMessage();
 		}
+	}
+
+	private void handle(Master.PermutationRequestMessage message){
+		System.out.println(message);
+		char[] keys = message.getPermutationKeys();
+
+		String[] hashedHints = message.getHashedHints();
+		List<String> permutations = new ArrayList<String>();
+		heapPermutation(keys, keys.length, keys.length, permutations);
+
+		int found = 0;
+		int i = 0;
+		for(String permutation : permutations){
+			String hash = hash(permutation);
+			for(String hashedHint : hashedHints){
+				if(hash.equals(hashedHint)){
+					found++;
+					//TODO Send to master
+				}
+			}
+			i++;
+		}
+		System.out.println("\n\n\n\nDone"+ i + ":" + found);
 	}
 	
 	private void handle(MemberRemoved message) {

@@ -8,6 +8,7 @@ import akka.actor.ActorRef;
 import akka.actor.PoisonPill;
 import akka.actor.Props;
 import akka.actor.Terminated;
+import de.hpi.ddm.structures.Line;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -45,14 +46,23 @@ public class Master extends AbstractLoggingActor {
 	@Data @NoArgsConstructor @AllArgsConstructor
 	public static class BatchMessage implements Serializable {
 		private static final long serialVersionUID = 8343040942748609598L;
-		private List<String[]> lines;
+		private List<Line> lines;
 	}
 
 	@Data
 	public static class RegistrationMessage implements Serializable {
 		private static final long serialVersionUID = 3303081601659723997L;
 	}
-	
+
+	@Data @NoArgsConstructor @AllArgsConstructor
+	public static class PermutationRequestMessage implements Serializable {
+		private static final long serialVersionUID = 8343234942748609598L;
+		private char[] permutationKeys;
+		private String[] hashedHints;
+		private ActorRef boss;
+	}
+
+
 	/////////////////
 	// Actor State //
 	/////////////////
@@ -112,16 +122,43 @@ public class Master extends AbstractLoggingActor {
 			return;
 		}
 
-		this.lineQueue.addAll(message.getLines());
+		/*this.lineQueue.addAll(message.getLines());
 
 		if(!this.idleWorkers.isEmpty()) {
 			ActorRef worker = this.idleWorkers.removeFirst();
 			String[] line = this.lineQueue.removeFirst();
 			worker.tell(new Worker.LineMessage(line), this.self());
+		}*/
+
+		Line head = message.getLines().get(0);
+		ArrayList<char[]> allHints = allHintSets(head.getPasswordChars());
+
+		int i = 0;
+
+		ArrayList<String> allHintHashes = new ArrayList<String>();
+		for(Line line : message.getLines()){
+			String[] hints = line.getHints();
+			for(String hint : hints) {
+				allHintHashes.add(hint);
+			}
 		}
+
+		String[] allHintHashesArray = new String[allHintHashes.size()];
+		allHintHashes.toArray(allHintHashesArray);
+
+
+
+		for(ActorRef worker : this.workers){
+			worker.tell(new PermutationRequestMessage(allHints.get(i), allHintHashesArray, this.self()),this.self());
+			i++;
+		}
+		for (Line line : message.getLines())
+			System.out.println(line.toString());
 		
 		this.collector.tell(new Collector.CollectMessage("Processed batch of size " + message.getLines().size()), this.self());
-		this.reader.tell(new Reader.ReadMessage(), this.self());
+
+		//TODO Only read when work is done
+		//this.reader.tell(new Reader.ReadMessage(), this.self());
 	}
 
 	protected void handle(Worker.ReadyMessage message) {
@@ -137,7 +174,26 @@ public class Master extends AbstractLoggingActor {
 		String[] line = this.lineQueue.removeFirst();
 		message.getSender().tell(new Worker.LineMessage(line), this.self());
 	}
-	
+
+	private ArrayList<char[]> allHintSets(char[] passwordChars){
+		ArrayList<char[] > list = new ArrayList<char[]>();
+		for(int i=0; i< passwordChars.length; i++){
+			char[] hintSets = new char[passwordChars.length - 1];
+			boolean isSkipped = false;
+			for(int j = 0; j < passwordChars.length; j++){
+				if(i == j){
+					isSkipped = true;
+				}else if(isSkipped){
+					hintSets[j - 1] = passwordChars[j];
+				} else{
+					hintSets[j] = passwordChars[j];
+				}
+			}
+			list.add(hintSets);
+		}
+		return list;
+	}
+
 	protected void terminate() {
 		this.reader.tell(PoisonPill.getInstance(), ActorRef.noSender());
 		this.collector.tell(PoisonPill.getInstance(), ActorRef.noSender());
