@@ -19,7 +19,7 @@ public class Reader extends AbstractLoggingActor {
 	////////////////////////
 	// Actor Construction //
 	////////////////////////
-	
+
 	public static final String DEFAULT_NAME = "reader";
 
 	public static Props props() {
@@ -34,17 +34,17 @@ public class Reader extends AbstractLoggingActor {
 	public static class ReadMessage implements Serializable {
 		private static final long serialVersionUID = -3254147511955012292L;
 	}
-	
+
 	/////////////////
 	// Actor State //
 	/////////////////
-	
+
 	private CSVReader reader;
-	
+
 	private int bufferSize;
-	
-	private List<String[]> buffer;
-	
+
+	private List<Line> buffer;
+
 	/////////////////////
 	// Actor Lifecycle //
 	/////////////////////
@@ -52,11 +52,11 @@ public class Reader extends AbstractLoggingActor {
 	@Override
 	public void preStart() throws Exception {
 		Reaper.watchWithDefaultReaper(this);
-		
+
 		this.reader = DatasetDescriptorSingleton.get().createCSVReader();
 		this.bufferSize = ConfigurationSingleton.get().getBufferSize();
 		this.buffer = new ArrayList<>(this.bufferSize);
-		
+
 		this.read();
 	}
 
@@ -78,18 +78,18 @@ public class Reader extends AbstractLoggingActor {
 	}
 
 	private void handle(ReadMessage message) throws Exception {
-		this.sender().tell(new Master.BatchMessage(new ArrayList<>(this.buffer)), this.self());
-		
+		this.sender().tell(new Master.BatchMessage(new ArrayList<Line>(this.buffer)), this.self());
+
 		this.read();
 	}
-	
+
 	private void read() throws Exception {
 		this.buffer.clear();
-		
+
 		String[] line;
 		while ((this.buffer.size() < this.bufferSize) && ((line = this.reader.readNext()) != null)) {
-			convertLine(line);
-			this.buffer.add(line);
+			Line convertedLine = convertLine(line);
+			this.buffer.add(convertedLine);
 		}
 	}
 

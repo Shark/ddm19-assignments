@@ -1,8 +1,11 @@
 package de.hpi.ddm.actors;
 
+import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 
 import akka.actor.AbstractLoggingActor;
@@ -16,6 +19,9 @@ import akka.cluster.ClusterEvent.MemberUp;
 import akka.cluster.Member;
 import akka.cluster.MemberStatus;
 import de.hpi.ddm.MasterSystem;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 public class Worker extends AbstractLoggingActor {
 
@@ -36,6 +42,18 @@ public class Worker extends AbstractLoggingActor {
 	////////////////////
 	// Actor Messages //
 	////////////////////
+
+	@Data @NoArgsConstructor @AllArgsConstructor
+	public static class LineMessage implements Serializable {
+		private static final long serialVersionUID = -7028402685981649936L;
+		private String[] line;
+	}
+
+	@Data @NoArgsConstructor @AllArgsConstructor
+	public static class ReadyMessage implements Serializable {
+		private static final long serialVersionUID = -3199872003897162373L;
+		private ActorRef sender;
+	}
 
 	/////////////////
 	// Actor State //
@@ -69,7 +87,9 @@ public class Worker extends AbstractLoggingActor {
 		return receiveBuilder()
 				.match(CurrentClusterState.class, this::handle)
 				.match(MemberUp.class, this::handle)
+				.match(Master.HintRequestMessage.class, this::handle)
 				.match(MemberRemoved.class, this::handle)
+				.match(LineMessage.class, this::handle)
 				.matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
 				.build();
 	}
@@ -92,12 +112,42 @@ public class Worker extends AbstractLoggingActor {
 			this.getContext()
 				.actorSelection(member.address() + "/user/" + Master.DEFAULT_NAME)
 				.tell(new Master.RegistrationMessage(), this.self());
+
+			this.sendReadyMessage();
 		}
+	}
+
+	private void handle(Master.HintRequestMessage message){
+		System.out.println(message);
+		char[] keys = message.getPermutationKeys();
+
+		String[] hashedHints = message.getHashedHints();
+		List<String> permutations = new ArrayList<String>();
+		heapPermutation(keys, keys.length, keys.length, permutations);
+
+		int found = 0;
+		int i = 0;
+		for(String permutation : permutations){
+			String hash = hash(permutation);
+			for(String hashedHint : hashedHints){
+				if(hash.equals(hashedHint)){
+					found++;
+					//TODO Send to master
+				}
+			}
+			i++;
+		}
+		System.out.println("\n\n\n\nDone"+ i + ":" + found);
 	}
 	
 	private void handle(MemberRemoved message) {
 		if (this.masterSystem.equals(message.member()))
 			this.self().tell(PoisonPill.getInstance(), ActorRef.noSender());
+	}
+
+	private void handle(LineMessage message) {
+		System.out.println(Arrays.toString(message.line));
+		this.sendReadyMessage();
 	}
 	
 	private String hash(String line) {
@@ -141,5 +191,11 @@ public class Worker extends AbstractLoggingActor {
 				a[size - 1] = temp;
 			}
 		}
+	}
+
+	private void sendReadyMessage() {
+		this.getContext()
+			.actorSelection(this.masterSystem.address() + "/user/" + Master.DEFAULT_NAME)
+			.tell(new ReadyMessage(this.self()), this.self());
 	}
 }
