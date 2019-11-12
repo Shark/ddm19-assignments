@@ -68,6 +68,7 @@ public class Master extends AbstractLoggingActor {
 		private static final long serialVersionUID = 8343232442748609598L;
 		private char hintKey;         // a
 		private String[] solvedHints; // ["hintHash2",  ...]
+		private ActorRef sender;
 	}
 
 	@Data @NoArgsConstructor @AllArgsConstructor
@@ -84,6 +85,7 @@ public class Master extends AbstractLoggingActor {
 		private static final long serialVersionUID = 8343232442748129598L;
 		private String solvedPassword;  // "aaeeaaee"
 		private String hashedPassword;  // "hint1
+		private ActorRef sender;
 	}
 
 
