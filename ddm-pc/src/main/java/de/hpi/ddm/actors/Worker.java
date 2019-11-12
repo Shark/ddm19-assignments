@@ -44,22 +44,6 @@ public class Worker extends AbstractLoggingActor {
     // Actor Messages //
     ////////////////////
 
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class LineMessage implements Serializable {
-        private static final long serialVersionUID = -7028402685981649936L;
-        private String[] line;
-    }
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ReadyMessage implements Serializable {
-        private static final long serialVersionUID = -3199872003897162373L;
-        private ActorRef sender;
-    }
-
     /////////////////
     // Actor State //
     /////////////////
@@ -95,7 +79,6 @@ public class Worker extends AbstractLoggingActor {
                 .match(Master.HintRequestMessage.class, this::handle)
                 .match(Master.PasswordRequestMessage.class, this::handle)
                 .match(MemberRemoved.class, this::handle)
-                .match(LineMessage.class, this::handle)
                 .matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
                 .build();
     }
@@ -118,8 +101,6 @@ public class Worker extends AbstractLoggingActor {
             this.getContext()
                     .actorSelection(member.address() + "/user/" + Master.DEFAULT_NAME)
                     .tell(new Master.RegistrationMessage(), this.self());
-
-            this.sendReadyMessage();
         }
 		//worker.tell(new PasswordRequestMessage(new char[]{'G', 'F'}, 10, "c4712866799881ac48ca55bf78a9540b1883ae033b52109169eb784969be09d5", this.self()), this.self());
     }
@@ -157,7 +138,6 @@ public class Worker extends AbstractLoggingActor {
 			String hash = hash(permutation);
 			if(hash.equals(hashedPassword)){
 				//We are done
-				System.out.println(permutation);
 				Master.PasswordAnswerMessage answerMessage = new Master.PasswordAnswerMessage();
 				answerMessage.setHashedPassword(hashedPassword);
 				answerMessage.setSolvedPassword(permutation);
@@ -171,11 +151,6 @@ public class Worker extends AbstractLoggingActor {
     private void handle(MemberRemoved message) {
         if (this.masterSystem.equals(message.member()))
             this.self().tell(PoisonPill.getInstance(), ActorRef.noSender());
-    }
-
-    private void handle(LineMessage message) {
-        System.out.println(Arrays.toString(message.line));
-        this.sendReadyMessage();
     }
 
     private String hash(String line) {
@@ -218,12 +193,6 @@ public class Worker extends AbstractLoggingActor {
                 a[size - 1] = temp;
             }
         }
-    }
-
-    private void sendReadyMessage() {
-        this.getContext()
-                .actorSelection(this.masterSystem.address() + "/user/" + Master.DEFAULT_NAME)
-                .tell(new ReadyMessage(this.self()), this.self());
     }
 
     // The method that prints all

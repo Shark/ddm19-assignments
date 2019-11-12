@@ -31,6 +31,8 @@ public class Master extends AbstractLoggingActor {
 		this.workers = new ArrayList<>();
 		this.lineQueue = new LinkedList<>();
 		this.idleWorkers = new LinkedList<>();
+		this.queuedHintRequestMessages = new LinkedList<>();
+		this.queuedPasswordRequestMessages = new LinkedList<>();
 		this.isAllBatchesReceived = false;
 	}
 
@@ -97,9 +99,14 @@ public class Master extends AbstractLoggingActor {
 	private final ActorRef reader;
 	private final ActorRef collector;
 	private final List<ActorRef> workers;
-	private final LinkedList<String[]> lineQueue;
+	private final LinkedList<Line> lineQueue;
 	private final LinkedList<ActorRef> idleWorkers;
+	private final LinkedList<HintRequestMessage> queuedHintRequestMessages;
+	private final LinkedList<PasswordRequestMessage> queuedPasswordRequestMessages;
 	private Boolean isAllBatchesReceived;
+	private char[] passwordChars;
+	private int passwordLength;
+	private int numberOfHints;
 
 	private long startTime;
 	
@@ -123,7 +130,8 @@ public class Master extends AbstractLoggingActor {
 				.match(BatchMessage.class, this::handle)
 				.match(Terminated.class, this::handle)
 				.match(RegistrationMessage.class, this::handle)
-				.match(Worker.ReadyMessage.class, this::handle)
+				.match(HintAnswerMessage.class, this::handle)
+				.match(PasswordAnswerMessage.class, this::handle)
 				.matchAny(object -> this.log().info("Received unknown message: \"{}\"", object.toString()))
 				.build();
 	}
@@ -142,84 +150,141 @@ public class Master extends AbstractLoggingActor {
 		// 2. If we process the batches early, we can achieve latency hiding. /////////////////////////////////
 		// TODO: Implement the processing of the data for the concrete assignment. ////////////////////////////
 		///////////////////////////////////////////////////////////////////////////////////////////////////////
-		
-		if (message.getLines().isEmpty()) {
+
+		if(message.getLines().isEmpty()) {
 			this.collector.tell(new Collector.PrintMessage(), this.self());
 			this.isAllBatchesReceived = true;
 			return;
 		}
 
-		/*this.lineQueue.addAll(message.getLines());
-
-		if(!this.idleWorkers.isEmpty()) {
-			ActorRef worker = this.idleWorkers.removeFirst();
-			String[] line = this.lineQueue.removeFirst();
-			worker.tell(new Worker.LineMessage(line), this.self());
-		}*/
-
-		Line head = message.getLines().get(0);
-		ArrayList<char[]> allHints = allHintSets(head.getPasswordChars());
-
-		int i = 0;
-
-		ArrayList<String> allHintHashes = new ArrayList<String>();
-		for(Line line : message.getLines()){
-			String[] hints = line.getHints();
-			for(String hint : hints) {
-				allHintHashes.add(hint);
-			}
+		if(this.passwordChars == null) {
+			this.passwordChars = message.getLines().get(0).getPasswordChars();
 		}
-
-		String[] allHintHashesArray = new String[allHintHashes.size()];
-		allHintHashes.toArray(allHintHashesArray);
-
-
-
-		for(ActorRef worker : this.workers){
-			//worker.tell(new HintRequestMessage(allHints.get(i), allHintHashesArray, this.self()),this.self());
-			i++;
+		if(this.passwordLength == 0) {
+			this.passwordLength = message.getLines().get(0).getPasswordLength();
 		}
-		for (Line line : message.getLines())
-			System.out.println(line.toString());
+		if(this.numberOfHints == 0) {
+			this.numberOfHints = message.getLines().get(0).getHints().length;
+		}
 		
-		this.collector.tell(new Collector.CollectMessage("Processed batch of size " + message.getLines().size()), this.self());
-
-		//TODO Only read when work is done
-		//this.reader.tell(new Reader.ReadMessage(), this.self());
-	}
-
-	protected void handle(Worker.ReadyMessage message) {
-		if(this.lineQueue.isEmpty()) {
-			if(this.isAllBatchesReceived) {
-				this.terminate();
-			} else {
-				this.idleWorkers.add(message.getSender());
+		ArrayList<String> allHintsList = new ArrayList<>();
+		for(Line line : message.getLines()) {
+			for(int i=0; i<line.getHints().length; i++) {
+				allHintsList.add(line.getHints()[i]);
 			}
-			return;
+		}
+		String allHintsArray[] = new String[allHintsList.size()];
+		allHintsList.toArray(allHintsArray);
+
+		for(int i=0; i<this.passwordChars.length; i++) {
+			char currentChar = this.passwordChars[i];
+			char otherChars[] = new char[this.passwordChars.length-1];
+			int j = 0;
+			for(int k=0; k<this.passwordChars.length; k++) {
+				char otherChar = this.passwordChars[k];
+				if(currentChar == otherChar) {
+					continue;
+				}
+				otherChars[j++] = otherChar;
+			}
+			HintRequestMessage msg = new HintRequestMessage();
+			msg.setPermutationKeys(otherChars);
+			msg.setHintKey(currentChar);
+			msg.setBoss(this.getSelf());
+			msg.setHashedHints(allHintsArray);
+			this.queuedHintRequestMessages.add(msg);
 		}
 
-		String[] line = this.lineQueue.removeFirst();
-		message.getSender().tell(new Worker.LineMessage(line), this.self());
+		this.lineQueue.addAll(message.getLines());
+
+		dispatchMessageQueues();
 	}
 
-	private ArrayList<char[]> allHintSets(char[] passwordChars){
-		ArrayList<char[] > list = new ArrayList<char[]>();
-		for(int i=0; i< passwordChars.length; i++){
-			char[] hintSets = new char[passwordChars.length - 1];
-			boolean isSkipped = false;
-			for(int j = 0; j < passwordChars.length; j++){
-				if(i == j){
-					isSkipped = true;
-				}else if(isSkipped){
-					hintSets[j - 1] = passwordChars[j];
-				} else{
-					hintSets[j] = passwordChars[j];
+	protected void handle(HintAnswerMessage message) {
+		for(Line line : this.lineQueue) {
+			for(int i=0; i<line.getHints().length; i++) {
+				for(int j=0; j<message.getSolvedHints().length; j++) {
+					if(line.getHints()[i].equals(message.getSolvedHints()[j])) {
+						line.getCharsNotInPasswordFromHints().push(message.getHintKey());
+					}
 				}
 			}
-			list.add(hintSets);
+
+			if(line.getCharsNotInPasswordFromHints().size() == this.numberOfHints) {
+				PasswordRequestMessage msg = new PasswordRequestMessage();
+				msg.setBoss(this.getSelf());
+				msg.setHashedPassword(line.getHashedPassword());
+				LinkedList<Character> linePwCharsList = new LinkedList<>();
+				for(int i=0; i<this.passwordChars.length; i++) {
+					if(line.getCharsNotInPasswordFromHints().contains(this.passwordChars[i])) {
+						continue;
+					}
+					linePwCharsList.add(this.passwordChars[i]);
+				}
+				char linePwChars[] = new char[linePwCharsList.size()];
+				int i = 0;
+				for(Character c : linePwCharsList) {
+					linePwChars[i++] = c;
+				}
+				msg.setPermutationKeys(linePwChars);
+				msg.setPasswordLength(this.passwordLength);
+				this.queuedPasswordRequestMessages.add(msg);
+			}
 		}
-		return list;
+		handleWorkerFinished(message.getSender());
 	}
+
+	protected void handle(PasswordAnswerMessage message) {
+		Iterator<Line> it = this.lineQueue.iterator();
+		while(it.hasNext()) {
+			Line line = it.next();
+			if(line.getHashedPassword().equals(message.getHashedPassword())) {
+				it.remove();
+				this.log().info("Solved {} = {}, {} passwords left", message.getHashedPassword(), message.getSolvedPassword(), this.lineQueue.size());
+			}
+		}
+		handleWorkerFinished(message.getSender());
+	}
+
+	private void handleWorkerFinished(ActorRef worker) {
+		this.idleWorkers.add(worker);
+		dispatchMessageQueues();
+
+		if(this.isFinished()) {
+			this.terminate();
+		}
+	}
+
+	private void dispatchMessageQueues() {
+		HintRequestMessage nextHintRequestMessage = this.queuedHintRequestMessages.peek();
+		ActorRef nextWorker = this.idleWorkers.peek();
+		while(nextWorker != null && nextHintRequestMessage != null) {
+			this.idleWorkers.removeFirst();
+			this.queuedHintRequestMessages.removeFirst();
+			nextWorker.tell(nextHintRequestMessage, this.getSelf());
+			nextHintRequestMessage = this.queuedHintRequestMessages.peek();
+			nextWorker = this.idleWorkers.peek();
+		}
+
+		PasswordRequestMessage nextPasswordRequestMessage = this.queuedPasswordRequestMessages.peek();
+		nextWorker = this.idleWorkers.peek();
+		while(nextWorker != null && nextPasswordRequestMessage != null) {
+			this.idleWorkers.removeFirst();
+			this.queuedPasswordRequestMessages.removeFirst();
+			nextWorker.tell(nextPasswordRequestMessage, this.getSelf());
+			nextPasswordRequestMessage = this.queuedPasswordRequestMessages.peek();
+			nextWorker = this.idleWorkers.peek();
+		}
+
+		if(this.queuedHintRequestMessages.isEmpty() && this.queuedPasswordRequestMessages.isEmpty()) {
+			this.reader.tell(new Reader.ReadMessage(), this.self());
+		}
+	}
+
+	private Boolean isFinished() {
+		return this.isAllBatchesReceived && this.lineQueue.isEmpty();
+	}
+
 
 	protected void terminate() {
 		this.reader.tell(PoisonPill.getInstance(), ActorRef.noSender());
@@ -239,6 +304,7 @@ public class Master extends AbstractLoggingActor {
 	protected void handle(RegistrationMessage message) {
 		this.context().watch(this.sender());
 		this.workers.add(this.sender());
+		handleWorkerFinished(this.sender());
 //		this.log().info("Registered {}", this.sender());
 	}
 	
