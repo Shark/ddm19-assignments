@@ -1,0 +1,4 @@
+FROM bde2020/spark-submit
+RUN apk add --no-cache coreutils procps
+COPY run_history.sh /
+CMD ["/run_history.sh"]
