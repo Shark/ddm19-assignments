@@ -9,6 +9,7 @@ import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorIndexer}
 import org.apache.log4j.Logger
 import org.apache.log4j.Level
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.catalyst.expressions.aggregate.Count
 
 object Sindy extends App {
 
@@ -38,8 +39,11 @@ object Sindy extends App {
     // Inclusion Dependency Discovery (Homework)
     //------------------------------------------------------------------------------------------------------------------
 
-    val inputs = List("region", "nation", "supplier", "customer", "part", "lineitem", "orders")
-      .map(name => s"data/TPCH/tpch_$name.csv")
+        val inputs = List("region", "nation", "supplier", "customer", "part", "lineitem", "orders")
+          .map(name => s"data/TPCH/tpch_$name.csv")
+
+//    val inputs = List("region", "nation")
+//      .map(name => s"data/test/tpch_$name.csv")
 
 
     time {
@@ -82,10 +86,24 @@ object Sindy extends App {
       preaggregation(cells, spark)
     })
 
-    val cache_based_preaggregation = tuples_frames.reduce((acc, frame) => acc.union(frame))
-    System.out.println(cache_based_preaggregation.count())
-    cache_based_preaggregation.show()
 
+    val cache_based_preaggregation = tuples_frames.reduce((acc, frame) => acc.union(frame))
+    //    System.out.println(cache_based_preaggregation.count())
+//    cache_based_preaggregation.show()
+    // TODO ADD partitioning by hash
+    //    cache_based_preaggregation.groupBy
+    val attribute_sets = cache_based_preaggregation.groupByKey(_._1).mapValues({ case (key, value) => value }).reduceGroups((acc, value) => acc ++ value).map((value) => value._2)
+    val inclusion_list = attribute_sets.flatMap((set) => {
+      set.map(e => (e, set.filter(el => !el.equals(e))))
+    })
+
+    val aggregate = inclusion_list.groupByKey(_._1).reduceGroups((acc, value) => (acc._1, acc._2.intersect(value._2))).map(p => p._2)
+    val results = aggregate.filter(data => data._2.length > 0)
+    val sorted = results.sort("_1")
+    sorted.collect().foreach(p => printf("%s < %s\n", p._1, p._2.sorted.mkString(", ")))
+
+
+    cache_based_preaggregation
 
     // TODO
   }
