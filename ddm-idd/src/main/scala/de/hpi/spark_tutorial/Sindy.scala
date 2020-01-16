@@ -55,6 +55,16 @@ object Sindy extends App {
     result
   }
 
+  def preaggregation(frame : Dataset[(String, String)], spark: SparkSession): Dataset[(String, Seq[String])] = {
+    import spark.implicits._
+
+    frame
+      .groupByKey(p => p._1)
+      .mapValues { case (key, values) => Set(values) }
+      .reduceGroups((storage, value) => storage ++ value)
+      .map{case (key, value) => (key, value.seq.toList.distinct)}
+  }
+
   def discoverINDs(inputs: List[String], spark: SparkSession): Unit = {
     import spark.implicits._
 
@@ -67,14 +77,22 @@ object Sindy extends App {
     )
 
     //    frames.flatMap(frame => frame.flatMap((test) => List(test)))
-    val frame = frames.head.toDF()
+    val tuples_frames = frames.map(frame => {
+      val columns = frame.columns
+      frame.flatMap(row => row.toSeq.map(p => String.valueOf(p)).zip(columns))
+    })
+    val frame = tuples_frames.head
+    frame.show()
+    val result = preaggregation(frame, spark)
+
+    result.show()
+
     //    frame.groupByKey( t => t._1)
     //    frames.map(frame => {
     //    })
-    val columns = frame.columns
-    val results = frame.flatMap(row => row.toSeq.map(p => String.valueOf(p)).zip(columns))
 
-    results.show()
+
+    //    results.show()
 
     //    System.out.println(result.mkString);
 
