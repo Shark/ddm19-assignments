@@ -3,10 +3,26 @@ package de.hpi.spark_tutorial
 import org.apache.spark.sql.{Dataset, SparkSession}
 import org.apache.log4j.Logger
 import org.apache.log4j.Level
+import scopt.OParser
 
 object Sindy extends App {
 
+  case class Config(
+                     cores: Int = 4,
+                     partitions: Int = 200,
+                     path: String = "TPCH")
+
   override def main(args: Array[String]): Unit = {
+
+    import scopt.OParser
+    val parser = createOParser
+    val config = OParser.parse(parser, args, Config()) match {
+      case Some(config) =>
+      config
+      case _ =>
+        Config()
+      // arguments are bad, error message will have been displayed
+    }
 
     Logger.getLogger("org").setLevel(Level.OFF)
     Logger.getLogger("akka").setLevel(Level.OFF)
@@ -18,14 +34,12 @@ object Sindy extends App {
     val sparkBuilder = SparkSession
       .builder()
       .appName("SparkTutorial")
-      .master("local[4]") // local, with 4 worker cores
+      .master(s"local[${config.cores}]") // local, with 4 worker cores
     val spark = sparkBuilder.getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
-    // Set the default number of shuffle partitions (default is 200, which is too high for local deployment)
-    spark.conf.set("spark.sql.shuffle.partitions", "50") //
 
-    // Importing implicit encoders for standard library classes and tuples that are used as Dataset types
-    import spark.implicits._
+    // Set the default number of shuffle partitions (default is 200, which is too high for local deployment)
+    spark.conf.set("spark.sql.shuffle.partitions", s"${config.partitions}") //
 
     println("---------------------------------------------------------------------------------------------------------")
     //------------------------------------------------------------------------------------------------------------------
@@ -33,7 +47,7 @@ object Sindy extends App {
     //------------------------------------------------------------------------------------------------------------------
 
         val inputs = List("region", "nation", "supplier", "customer", "part", "lineitem", "orders")
-          .map(name => s"data/TPCH/tpch_$name.csv")
+          .map(name => s"${config.path}/tpch_$name.csv")
 
     time {
       discoverINDs(inputs, spark)
@@ -86,5 +100,27 @@ object Sindy extends App {
     val t1 = System.currentTimeMillis()
     println(s"Execution: ${t1 - t0} ms")
     result
+  }
+
+  def createOParser : OParser[Unit, Config] = {
+    import scopt.OParser
+    val builder = OParser.builder[Config]
+    val parser: OParser[Unit, Config] = {
+      import builder._
+      OParser.sequence(
+        programName("scopt"),
+        head("scopt", "4.x"),
+        opt[Int]('c', "cores")
+          .action((x, c) => c.copy(cores = x))
+          .text("cores is an integer property"),
+        opt[Int]('a', "partitions")
+          .action((x, c) => c.copy(partitions = x))
+          .text("partitions is an integer property"),
+        opt[String]('p', "path")
+          .action((x, c) => c.copy(path = x))
+          .text("path is a directory")
+      )
+    }
+    parser
   }
 }

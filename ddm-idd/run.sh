@@ -8,4 +8,4 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
                         --total-executor-cores 2 \
                         --conf spark.driver.extraJavaOptions=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 \
                         --conf spark.eventLog.enabled=true \
-                        "$DIR"/target/SparkTutorial-1.0.jar
+                        "$DIR"/target/ElixirEvangelists-1.0.jar --path "data/TPCH" --partitions 8

@@ -2,11 +2,11 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>de.hpi.spark_tutorial</groupId>
-  <artifactId>SparkTutorial</artifactId>
+  <artifactId>ElixirEvangelists</artifactId>
   <version>1.0</version>
   <name>${project.artifactId}</name>
   <description>A spark tutorial project</description>
-  <inceptionYear>2018</inceptionYear>
+  <inceptionYear>2020</inceptionYear>
   <packaging>jar</packaging>
 
   <properties>
@@ -43,6 +43,12 @@
       <artifactId>spark-mllib_2.11</artifactId>
       <version>2.4.0</version>
       <!--<scope>provided</scope>-->
+    </dependency>
+
+    <dependency>
+      <groupId>com.github.scopt</groupId>
+      <artifactId>scopt_2.11</artifactId>
+      <version>4.0.0-RC2</version>
     </dependency>
   </dependencies>
 
