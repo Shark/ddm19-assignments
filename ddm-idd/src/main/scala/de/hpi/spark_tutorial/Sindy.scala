@@ -18,7 +18,7 @@ object Sindy extends App {
     val parser = createOParser
     val config = OParser.parse(parser, args, Config()) match {
       case Some(config) =>
-      config
+        config
       case _ =>
         Config()
       // arguments are bad, error message will have been displayed
@@ -38,16 +38,24 @@ object Sindy extends App {
     val spark = sparkBuilder.getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
 
+    val partitions = if (config.partitions == 200) { // Uses config based on cores if partitions are not explicit set
+      (config.cores * 2.5).toInt
+
+    } else {
+      config.partitions
+    }
     // Set the default number of shuffle partitions (default is 200, which is too high for local deployment)
-    spark.conf.set("spark.sql.shuffle.partitions", s"${config.partitions}") //
+    spark.conf.set("spark.sql.shuffle.partitions", s"${partitions}") //
+
 
     println("---------------------------------------------------------------------------------------------------------")
     //------------------------------------------------------------------------------------------------------------------
     // Inclusion Dependency Discovery (Homework)
     //------------------------------------------------------------------------------------------------------------------
 
-        val inputs = List("region", "nation", "supplier", "customer", "part", "lineitem", "orders")
-          .map(name => s"${config.path}/tpch_$name.csv")
+    //        val inputs = List("region", "nation", "supplier", "customer", "part", "lineitem", "orders")
+    //          .map(name => s"${config.path}/tpch_$name.csv")
+    val inputs = getListOfFiles(config.path)
 
     time {
       discoverINDs(inputs, spark)
@@ -102,7 +110,16 @@ object Sindy extends App {
     result
   }
 
-  def createOParser : OParser[Unit, Config] = {
+  import java.io.File
+
+  def getListOfFiles(dir: String): List[String] = {
+    val file = new File(dir)
+    file.listFiles.filter(_.isFile)
+      .filter(_.getName.endsWith(".csv"))
+      .map(_.getPath).toList
+  }
+
+  def createOParser: OParser[Unit, Config] = {
     import scopt.OParser
     val builder = OParser.builder[Config]
     val parser: OParser[Unit, Config] = {
